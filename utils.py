@@ -1,11 +1,13 @@
-from logging.handlers import RotatingFileHandler
-import logging
+import os
 import sys
-import matplotlib.pyplot as plt
+import logging
+from logging.handlers import RotatingFileHandler
+
 import numpy as np
+import matplotlib.pyplot as plt
+
 from config import Config
 from data import Data
-import os
 
 def load_logger(config):
     logger = logging.getLogger()
@@ -20,7 +22,7 @@ def load_logger(config):
         logger.addHandler(stream_handler)
 
     if config.do_log_save_to_file:
-        file_handler = RotatingFileHandler(config.log_save_path + "out.log", maxBytes=1024000, backupCount=5)
+        file_handler = RotatingFileHandler(config.log_save_path + config.log_save_filename, maxBytes=1024000, backupCount=5)
         file_handler.setLevel(level=logging.INFO)
         formatter = logging.Formatter('%(asctime)s - %(levelname)s - %(message)s')
         file_handler.setFormatter(formatter)
@@ -39,17 +41,17 @@ def load_logger(config):
 
 def draw(config: Config, origin_data: Data, logger, predict_norm_data: np.ndarray):
     label_data = origin_data.data[origin_data.train_num + origin_data.start_num_in_test : ,
-                                  config.label_in_feature_index]
-    predict_data = predict_norm_data * origin_data.std[config.label_in_feature_index] + \
-                   origin_data.mean[config.label_in_feature_index]  # Restore normalized prediction
+                                  origin_data.label_in_feature_index]
+    predict_data = predict_norm_data * origin_data.std[origin_data.label_in_feature_index] + \
+                   origin_data.mean[origin_data.label_in_feature_index]  # Restore normalized prediction
 
     assert label_data.shape[0] == predict_data.shape[0], "Mismatch in number of label and prediction samples"
 
-    label_name = [origin_data.data_column_name[i] for i in config.label_in_feature_index]
+    label_name = [origin_data.data_column_name[i] for i in origin_data.label_in_feature_index]
     label_column_num = len(config.label_columns)
 
     loss = np.mean((label_data[config.predict_day:] - predict_data[:-config.predict_day]) ** 2, axis=0)
-    loss_norm = loss / (origin_data.std[config.label_in_feature_index] ** 2)
+    loss_norm = loss / (origin_data.std[origin_data.label_in_feature_index] ** 2)
     logger.info("The mean squared error of stock {} is ".format(label_name) + str(loss_norm))
 
     label_X = range(origin_data.data_num - origin_data.train_num - origin_data.start_num_in_test)
@@ -68,3 +70,4 @@ def draw(config: Config, origin_data: Data, logger, predict_norm_data: np.ndarra
                     config.continue_flag, label_name[i]))
 
         plt.show()
+

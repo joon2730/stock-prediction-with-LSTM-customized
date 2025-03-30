@@ -1,13 +1,18 @@
 import numpy as np
 import pandas as pd
 from sklearn.model_selection import train_test_split
+
 from config import Config
+from rawdata import read_ohlcv_from_csv, fetch_ohlcv_online, append_additional_features
 
 class Data:
     def __init__(self, config):
         self.config = config
         self.data, self.data_column_name = self.read_data()
 
+        self.label_in_feature_index = (lambda x, y: [x.index(i) for i in y]) \
+            (self.data_column_name, config.label_columns)  # Mapping labels in feature list
+        
         self.data_num = self.data.shape[0]
         self.train_num = int(self.data_num * self.config.train_data_rate)
 
@@ -17,18 +22,33 @@ class Data:
 
         self.start_num_in_test = 0  # First few days in test set will be dropped
 
+    # def read_data(self):
+    #     if self.config.debug_mode:
+    #         init_data = pd.read_csv(self.config.train_data_path, nrows=self.config.debug_num,
+    #                                 usecols=self.config.feature_columns)
+    #     else:
+    #         init_data = pd.read_csv(self.config.train_data_path, usecols=self.config.feature_columns)
+    #     return init_data.values, init_data.columns.tolist()
+
+    # customized read_data function for custom stock data
     def read_data(self):
-        if self.config.debug_mode:
-            init_data = pd.read_csv(self.config.train_data_path, nrows=self.config.debug_num,
-                                    usecols=self.config.feature_columns)
+        if self.config.fetch_data_online:
+            ohlcv = fetch_ohlcv_online(
+                ticker=self.config.ticker,
+                start_date=self.config.start_date,
+                end_date=self.config.end_date,
+                interval=self.config.interval,
+            )
         else:
-            init_data = pd.read_csv(self.config.train_data_path, usecols=self.config.feature_columns)
+            ohlcv = read_ohlcv_from_csv(self.config)
+
+        init_data = append_additional_features(ohlcv, to_append=self.config.add_features)
         return init_data.values, init_data.columns.tolist()
 
     def get_train_and_valid_data(self):
         feature_data = self.norm_data[:self.train_num]
         label_data = self.norm_data[self.config.predict_day : self.config.predict_day + self.train_num,
-                                    self.config.label_in_feature_index]
+                                    self.label_in_feature_index]
 
         if not self.config.do_continue_train:
             # Non-continuous mode: every time_step rows as one sample, shifted by 1 row
@@ -62,6 +82,6 @@ class Data:
         test_x = [feature_data[self.start_num_in_test+i*sample_interval : self.start_num_in_test+(i+1)*sample_interval]
                   for i in range(time_step_size)]
         if return_label_data:
-            label_data = self.norm_data[self.train_num + self.start_num_in_test:, self.config.label_in_feature_index]
+            label_data = self.norm_data[self.train_num + self.start_num_in_test:, self.label_in_feature_index]
             return np.array(test_x), label_data
         return np.array(test_x)
